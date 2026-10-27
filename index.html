@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Archery Master - Bow & Teer Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+    
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      box-sizing: border-box;
+      touch-action: none;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
+    .title-font {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    /* Floating UI glass styling */
+    .glass-hud {
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Hit popup text animation */
+    @keyframes hitPopup {
+      0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+      20% { transform: translate(-50%, -15px) scale(1.2); opacity: 1; }
+      70% { transform: translate(-50%, -35px) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -50px) scale(0.9); opacity: 0; }
+    }
+
+    .hit-floating-text {
+      position: absolute;
+      pointer-events: none;
+      animation: hitPopup 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800;
+      text-shadow: 0 3px 8px rgba(0,0,0,0.6);
+    }
+  </style>
+</head>
+<body class="w-screen h-screen m-0 p-0 relative flex items-center justify-center bg-slate-950">
+
+  <!-- Main Game Canvas Container -->
+  <div id="game-wrapper" class="relative w-full h-full max-w-[1280px] max-h-[720px] aspect-[16/9] shadow-2xl overflow-hidden rounded-none md:rounded-2xl border border-slate-800">
+    
+    <!-- Canvas for Physics & World -->
+    <canvas id="gameCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+
+    <!-- Top HUD Overlay -->
+    <div class="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10 text-white">
+      
+      <!-- Left: Arrows remaining & Score -->
+      <div class="flex items-center gap-3">
+        <div class="glass-hud px-4 py-2.5 rounded-xl flex items-center gap-3 pointer-events-auto">
+          <div class="flex items-center text-amber-400">
+            <i class="fa-solid fa-feather-pointed text-xl -rotate-45 mr-1.5"></i>
+            <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Teer (Arrows):</span>
+          </div>
+          <span id="arrowsCount" class="title-font text-2xl font-extrabold text-amber-300">10</span>
+        </div>
+
+        <div class="glass-hud px-4 py-2.5 rounded-xl flex items-center gap-3 pointer-events-auto">
+          <div class="flex items-center text-sky-400">
+            <i class="fa-solid fa-trophy text-lg mr-2"></i>
+            <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Score:</span>
+          </div>
+          <span id="scoreDisplay" class="title-font text-2xl font-extrabold text-white">0</span>
+        </div>
+      </div>
+
+      <!-- Center: Wind Gauge & Round -->
+      <div class="glass-hud px-5 py-2 rounded-xl flex items-center gap-4 pointer-events-auto">
+        <div class="text-center">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-slate-300">Wind Speed</div>
+          <div id="windIndicator" class="flex items-center justify-center gap-1.5 font-extrabold text-sm text-cyan-300">
+            <i id="windArrow" class="fa-solid fa-arrow-right text-base transition-transform duration-500"></i>
+            <span id="windText">0.0 m/s</span>
+          </div>
+        </div>
+        <div class="w-px h-7 bg-slate-600/60"></div>
+        <div class="text-center">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-slate-300">High Score</div>
+          <div id="highScoreDisplay" class="title-font font-bold text-sm text-emerald-400">0</div>
+        </div>
+      </div>
+
+      <!-- Right: Power Bar & Audio Toggle -->
+      <div class="flex items-center gap-3">
+        <div class="glass-hud px-3.5 py-2 rounded-xl flex items-center gap-2 pointer-events-auto hidden sm:flex">
+          <span class="text-xs font-bold text-slate-300">Power</span>
+          <div class="w-24 h-3 bg-slate-700/80 rounded-full overflow-hidden p-0.5 border border-slate-600">
+            <div id="powerMeter" class="h-full bg-gradient-to-r from-emerald-500 via-amber-400 to-rose-500 rounded-full w-0 transition-all duration-75"></div>
+          </div>
+        </div>
+
+        <button id="soundToggleBtn" class="glass-hud w-11 h-11 rounded-xl flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800/80 pointer-events-auto transition active:scale-95">
+          <i id="soundIcon" class="fa-solid fa-volume-high text-lg"></i>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Aim Helper / Drag Hint -->
+    <div id="dragHint" class="absolute bottom-6 left-12 glass-hud px-4 py-2 rounded-xl text-slate-200 text-xs sm:text-sm font-medium flex items-center gap-2 pointer-events-none transition-opacity duration-300 opacity-90 animate-pulse">
+      <i class="fa-solid fa-hand-pointer text-amber-400 text-lg"></i>
+      <span>Click &amp; pull bow backwards to aim, release to shoot!</span>
+    </div>
+
+    <!-- Floating Popups Layer -->
+    <div id="popupLayer" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+    <!-- Game Over Modal Overlay -->
+    <div id="gameOverModal" class="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-30 opacity-0 pointer-events-none transition-opacity duration-300">
+      <div class="glass-hud p-8 rounded-3xl max-w-md w-11/12 text-center border border-white/20 shadow-2xl transform scale-95 transition-transform duration-300" id="gameOverCard">
+        
+        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/30">
+          <i class="fa-solid fa-bullseye text-3xl text-slate-950"></i>
+        </div>
+
+        <h2 class="title-font text-3xl font-black text-white mb-1">Round Completed!</h2>
+        <p class="text-slate-400 text-sm mb-6">Great precision on the archery field.</p>
+
+        <!-- Stats Breakdown -->
+        <div class="grid grid-cols-3 gap-2.5 mb-6">
+          <div class="bg-slate-900/70 p-3 rounded-2xl border border-slate-800">
+            <div class="text-[11px] font-bold text-slate-400 uppercase">Score</div>
+            <div id="finalScore" class="title-font text-2xl font-extrabold text-amber-400 mt-0.5">0</div>
+          </div>
+          <div class="bg-slate-900/70 p-3 rounded-2xl border border-slate-800">
+            <div class="text-[11px] font-bold text-slate-400 uppercase">Bullseyes</div>
+            <div id="finalBullseyes" class="title-font text-2xl font-extrabold text-rose-500 mt-0.5">0</div>
+          </div>
+          <div class="bg-slate-900/70 p-3 rounded-2xl border border-slate-800">
+            <div class="text-[11px] font-bold text-slate-400 uppercase">Accuracy</div>
+            <div id="finalAccuracy" class="title-font text-2xl font-extrabold text-sky-400 mt-0.5">0%</div>
+          </div>
+        </div>
+
+        <div id="newHighScoreBadge" class="hidden mb-5 text-emerald-400 font-extrabold text-sm tracking-wide animate-bounce">
+          <i class="fa-solid fa-star mr-1"></i> NEW ALL-TIME HIGH SCORE!
+        </div>
+
+        <button id="replayBtn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-400 hover:to-red-400 text-slate-950 font-black text-lg tracking-wide uppercase shadow-lg shadow-amber-500/30 active:scale-95 transition-all">
+          <i class="fa-solid fa-rotate-right mr-2"></i> Play Again (Replay)
+        </button>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* =====================================================================
+       AUDIO SYNTHESIZER (Pure Web Audio API - Zero External Audio Files)
+       ===================================================================== */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.init();
+      }
+
+      init() {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        } catch(e) {
+          console.warn("Web Audio API not supported", e);
+        }
+      }
+
+      resume() {
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // String tension sound during drag
+      playBowPull(tension) {
+        if (this.muted || !this.ctx) return;
+        this.resume();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        const startFreq = 80 + tension * 120;
+        osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(startFreq + 30, this.ctx.currentTime + 0.08);
+
+        gain.gain.setValueAtTime(0.04 * tension, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.08);
+      }
+
+      // Whoosh on arrow release
+      playRelease() {
+        if (this.muted || !this.ctx) return;
+        this.resume();
+        // White noise whoosh
+        const bufferSize = this.ctx.sampleRate * 0.18;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(2200, this.ctx.currentTime + 0.08);
+        filter.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.18);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.18);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start();
+      }
+
+      // Wood thud on hitting board
+      playHit(points) {
+        if (this.muted || !this.ctx) return;
+        this.resume();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(160, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(45, this.ctx.currentTime + 0.15);
+
+        gain.gain.setValueAtTime(0.45, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.15);
+
+        // Extra celebratory chime for Bullseye (50 pts)
+        if (points === 50) {
+          this.playBullseyeFanfare();
+        }
+      }
+
+      // Balloon pop sound
+      playPop() {
+        if (this.muted || !this.ctx) return;
+        this.resume();
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(450, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.12);
+
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.12);
+      }
+
+      // Bullseye harmonic fanfare
+      playBullseyeFanfare() {
+        if (this.muted || !this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.07);
+          gain.gain.setValueAtTime(0.2, this.ctx.currentTime + idx * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.07 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + idx * 0.07);
+          osc.stop(this.ctx.currentTime + idx * 0.07 + 0.35);
+        });
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* =====================================================================
+       GAME CONSTANTS & STATE
+       ===================================================================== */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('game-wrapper');
+
+    // Virtual Game Resolution (16:9 HD canvas coordinate space)
+    const V_WIDTH = 1280;
+    const V_HEIGHT = 720;
+    let scaleRatio = 1;
+
+    // Game variables
+    let score = 0;
+    let arrowsLeft = 10;
+    let totalShotsFired = 0;
+    let hitsCount = 0;
+    let bullseyesCount = 0;
+    let highScore = parseInt(localStorage.getItem('archery_highscore') || '0', 10);
+    let isGameOver = false;
+
+    // Environmental condition
+    let wind = 0; // Wind velocity along X-axis (-1.5 to +1.5)
+    let clouds = [];
+    let grassBlades = [];
+    let balloons = [];
+    let particles = [];
+    let activeArrows = [];
+    let stuckArrows = [];
+
+    // Bow configuration
+    const bow = {
+      x: 180,
+      y: 360,
+      pullX: 180,
+      pullY: 360,
+      isDragging: false,
+      pullDist: 0,
+      maxPull: 110,
+      angle: 0,
+      power: 0,
+      lastPullSoundDist: 0
+    };
+
+    // Moving Target configuration
+    const target = {
+      x: 1120,
+      y: 360,
+      width: 38,
+      height: 240,
+      speedY: 2.2,
+      minY: 150,
+      maxY: 570,
+      direction: 1,
+      rings: [
+        { label: 'Bullseye', pts: 50, color: '#f59e0b', stroke: '#d97706', hRatio: 0.20 },
+        { label: 'Red Ring', pts: 25, color: '#ef4444', stroke: '#b91c1c', hRatio: 0.48 },
+        { label: 'Blue Ring', pts: 10, color: '#3b82f6', stroke: '#1d4ed8', hRatio: 0.76 },
+        { label: 'White Ring', pts: 5, color: '#f8fafc', stroke: '#cbd5e1', hRatio: 1.00 }
+      ]
+    };
+
+    /* =====================================================================
+       INITIALIZATION & RESIZE MANAGEMENT
+       ===================================================================== */
+    function resizeCanvas() {
+      const rect = wrapper.getBoundingClientRect();
+      canvas.width = V_WIDTH;
+      canvas.height = V_HEIGHT;
+      scaleRatio = rect.width / V_WIDTH;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    document.getElementById('highScoreDisplay').innerText = highScore;
+
+    // Generate environmental assets (Clouds & decorative mountain hills)
+    for (let i = 0; i < 6; i++) {
+      clouds.push({
+        x: Math.random() * V_WIDTH,
+        y: 40 + Math.random() * 180,
+        speed: 0.3 + Math.random() * 0.45,
+        radius: 35 + Math.random() * 30
+      });
+    }
+
+    // Generate grass hill blades
+    for (let x = 0; x < V_WIDTH; x += 14) {
+      grassBlades.push({
+        x: x,
+        y: V_HEIGHT - 60,
+        height: 15 + Math.random() * 20,
+        swayOffset: Math.random() * Math.PI * 2
+      });
+    }
+
+    function randomizeWind() {
+      // Wind speed between -1.8 m/s (headwind) and +1.8 m/s (tailwind)
+      wind = (Math.random() * 3.2 - 1.6);
+      const windKmh = (wind * 8).toFixed(1);
+      const windText = document.getElementById('windText');
+      const windArrow = document.getElementById('windArrow');
+
+      windText.innerText = `${Math.abs(windKmh)} m/s`;
+      if (wind >= 0.1) {
+        windArrow.style.transform = 'rotate(0deg)';
+        windArrow.className = 'fa-solid fa-arrow-right text-base text-emerald-400';
+      } else if (wind <= -0.1) {
+        windArrow.style.transform = 'rotate(180deg)';
+        windArrow.className = 'fa-solid fa-arrow-right text-base text-rose-400';
+      } else {
+        windArrow.style.transform = 'rotate(-90deg)';
+        windArrow.className = 'fa-solid fa-arrow-up text-base text-cyan-300';
+      }
+    }
+
+    randomizeWind();
+
+    /* =====================================================================
+       BALLOONS & BONUS SPAWNERS
+       ===================================================================== */
+    function maybeSpawnBalloon() {
+      if (balloons.length < 2 && Math.random() < 0.007 && !isGameOver) {
+        const isGolden = Math.random() < 0.28; // 28% chance of Golden +Arrow balloon
+        balloons.push({
+          x: 480 + Math.random() * 460,
+          y: V_HEIGHT + 40,
+          radius: isGolden ? 24 : 22,
+          speedY: 1.5 + Math.random() * 1.6,
+          swaySpeed: 0.03 + Math.random() * 0.02,
+          swayDist: 20 + Math.random() * 15,
+          initialX: 0,
+          time: Math.random() * 100,
+          isGolden: isGolden,
+          color: isGolden ? '#fbbf24' : ['#ef4444', '#ec4899', '#8b5cf6', '#06b6d4'][Math.floor(Math.random() * 4)]
+        });
+        balloons[balloons.length - 1].initialX = balloons[balloons.length - 1].x;
+      }
+    }
+
+    /* =====================================================================
+       INPUT HANDLING (MOUSE & MULTI-TOUCH FOR MOBILE/DESKTOP)
+       ===================================================================== */
+    function getCanvasCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (V_WIDTH / rect.width),
+        y: (clientY - rect.top) * (V_HEIGHT / rect.height)
+      };
+    }
+
+    function onPointerDown(e) {
+      if (isGameOver || arrowsLeft <= 0) return;
+      const pos = getCanvasCoords(e);
+
+      // Allow dragging if clicked reasonably close to bow
+      const dist = Math.hypot(pos.x - bow.x, pos.y - bow.y);
+      if (dist < 180 || pos.x < 380) {
+        bow.isDragging = true;
+        updateBowPull(pos);
+        document.getElementById('dragHint').style.opacity = '0';
+      }
+    }
+
+    function onPointerMove(e) {
+      if (!bow.isDragging) return;
+      const pos = getCanvasCoords(e);
+      updateBowPull(pos);
+    }
+
+    function updateBowPull(pos) {
+      let dx = bow.x - pos.x;
+      let dy = bow.y - pos.y;
+
+      // Restrict pull backwards
+      if (dx < 0) dx = 0;
+
+      let dist = Math.hypot(dx, dy);
+      if (dist > bow.maxPull) {
+        const factor = bow.maxPull / dist;
+        dx *= factor;
+        dy *= factor;
+        dist = bow.maxPull;
+      }
+
+      bow.pullDist = dist;
+      bow.power = dist / bow.maxPull;
+      bow.angle = Math.atan2(dy, dx);
+      bow.pullX = bow.x - dx;
+      bow.pullY = bow.y - dy;
+
+      // Update Power Meter
+      const meter = document.getElementById('powerMeter');
+      if (meter) meter.style.width = `${Math.round(bow.power * 100)}%`;
+
+      // Bowstring sound feedback increments
+      if (Math.abs(bow.pullDist - bow.lastPullSoundDist) > 18) {
+        sound.playBowPull(bow.power);
+        bow.lastPullSoundDist = bow.pullDist;
+      }
+    }
+
+    function onPointerUp() {
+      if (!bow.isDragging) return;
+      bow.isDragging = false;
+
+      // Shoot arrow if sufficient draw
+      if (bow.power > 0.12 && arrowsLeft > 0) {
+        shootArrow();
+      } else {
+        // Cancel shot
+        bow.pullDist = 0;
+        bow.power = 0;
+        document.getElementById('powerMeter').style.width = '0%';
+      }
+    }
+
+    canvas.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+
+    canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('touchend', onPointerUp, { passive: false });
+
+    /* =====================================================================
+       ARROW CREATION & FLIGHT PHYSICS
+       ===================================================================== */
+    function shootArrow() {
+      const launchSpeed = 16 + bow.power * 26; // Velocity magnitude
+      const angle = bow.angle;
+
+      activeArrows.push({
+        x: bow.x,
+        y: bow.y,
+        vx: Math.cos(angle) * launchSpeed,
+        vy: -Math.sin(angle) * launchSpeed,
+        angle: angle,
+        length: 70,
+        stuck: false,
+        stuckTargetOffset: 0,
+        power: bow.power,
+        tailPositions: []
+      });
+
+      arrowsLeft--;
+      totalShotsFired++;
+      document.getElementById('arrowsCount').innerText = arrowsLeft;
+      document.getElementById('powerMeter').style.width = '0%';
+
+      sound.playRelease();
+
+      // Reset bow state
+      bow.pullDist = 0;
+      bow.power = 0;
+    }
+
+    /* =====================================================================
+       POPUP FEEDBACK & PARTICLES
+       ===================================================================== */
+    function createHitEffect(x, y, text, color) {
+      const popupLayer = document.getElementById('popupLayer');
+      const rect = canvas.getBoundingClientRect();
+
+      const screenX = (x / V_WIDTH) * rect.width;
+      const screenY = (y / V_HEIGHT) * rect.height;
+
+      const el = document.createElement('div');
+      el.className = 'hit-floating-text text-xl sm:text-2xl';
+      el.style.left = `${screenX}px`;
+      el.style.top = `${screenY}px`;
+      el.style.color = color;
+      el.innerHTML = text;
+      popupLayer.appendChild(el);
+
+      setTimeout(() => el.remove(), 1100);
+
+      // Particle explosion
+      for (let i = 0; i < 18; i++) {
+        const pAngle = Math.random() * Math.PI * 2;
+        const pSpeed = 2 + Math.random() * 5;
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(pAngle) * pSpeed,
+          vy: Math.sin(pAngle) * pSpeed,
+          radius: 3 + Math.random() * 3,
+          color: color,
+          alpha: 1,
+          gravity: 0.15
+        });
+      }
+    }
+
+    /* =====================================================================
+       GAME OVER & SCORE EVALUATION
+       ===================================================================== */
+    function checkGameOver() {
+      if (arrowsLeft <= 0 && activeArrows.length === 0 && !isGameOver) {
+        isGameOver = true;
+        setTimeout(showGameOverModal, 1000);
+      }
+    }
+
+    function showGameOverModal() {
+      const modal = document.getElementById('gameOverModal');
+      const card = document.getElementById('gameOverCard');
+      const accuracy = totalShotsFired > 0 ? Math.round((hitsCount / totalShotsFired) * 100) : 0;
+
+      document.getElementById('finalScore').innerText = score;
+      document.getElementById('finalBullseyes').innerText = bullseyesCount;
+      document.getElementById('finalAccuracy').innerText = `${accuracy}%`;
+
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('archery_highscore', highScore);
+        document.getElementById('highScoreDisplay').innerText = highScore;
+        document.getElementById('newHighScoreBadge').classList.remove('hidden');
+      } else {
+        document.getElementById('newHighScoreBadge').classList.add('hidden');
+      }
+
+      modal.classList.remove('pointer-events-none', 'opacity-0');
+      modal.classList.add('opacity-100');
+      card.classList.remove('scale-95');
+      card.classList.add('scale-100');
+    }
+
+    document.getElementById('replayBtn').addEventListener('click', restartGame);
+
+    function restartGame() {
+      score = 0;
+      arrowsLeft = 10;
+      totalShotsFired = 0;
+      hitsCount = 0;
+      bullseyesCount = 0;
+      isGameOver = false;
+      activeArrows = [];
+      stuckArrows = [];
+      particles = [];
+      balloons = [];
+
+      document.getElementById('scoreDisplay').innerText = '0';
+      document.getElementById('arrowsCount').innerText = '10';
+      document.getElementById('powerMeter').style.width = '0%';
+
+      const modal = document.getElementById('gameOverModal');
+      const card = document.getElementById('gameOverCard');
+      modal.classList.add('opacity-0', 'pointer-events-none');
+      card.classList.add('scale-95');
+
+      randomizeWind();
+    }
+
+    // Sound toggle button
+    document.getElementById('soundToggleBtn').addEventListener('click', () => {
+      sound.muted = !sound.muted;
+      const icon = document.getElementById('soundIcon');
+      if (sound.muted) {
+        icon.className = 'fa-solid fa-volume-xmark text-lg text-rose-400';
+      } else {
+        icon.className = 'fa-solid fa-volume-high text-lg text-slate-200';
+      }
+    });
+
+    /* =====================================================================
+       PHYSICS UPDATE LOOP
+       ===================================================================== */
+    function update() {
+      // 1. Move Clouds
+      clouds.forEach(c => {
+        c.x += c.speed;
+        if (c.x - c.radius * 2 > V_WIDTH) c.x = -c.radius * 2;
+      });
+
+      // 2. Move Target Board up/down with dynamic ease
+      target.y += target.speedY * target.direction;
+      if (target.y > target.maxY) {
+        target.y = target.maxY;
+        target.direction = -1;
+      } else if (target.y < target.minY) {
+        target.y = target.minY;
+        target.direction = 1;
+      }
+
+      // 3. Spawn & update balloons
+      maybeSpawnBalloon();
+      for (let i = balloons.length - 1; i >= 0; i--) {
+        const b = balloons[i];
+        b.time += b.swaySpeed;
+        b.y -= b.speedY;
+        b.x = b.initialX + Math.sin(b.time) * b.swayDist;
+
+        if (b.y < -50) balloons.splice(i, 1);
+      }
+
+      // 4. Update Flying Arrows
+      const GRAVITY = 0.38;
+      for (let i = activeArrows.length - 1; i >= 0; i--) {
+        const a = activeArrows[i];
+
+        // Store flight trail
+        a.tailPositions.push({ x: a.x, y: a.y });
+        if (a.tailPositions.length > 8) a.tailPositions.shift();
+
+        // Apply external forces (Gravity & Wind)
+        a.vy += GRAVITY;
+        a.vx += wind * 0.055;
+
+        a.x += a.vx;
+        a.y += a.vy;
+
+        // Dynamic angle matching ballistic velocity vector
+        a.angle = Math.atan2(a.vy, a.vx);
+
+        // A. Collision Check with Balloons
+        for (let j = balloons.length - 1; j >= 0; j--) {
+          const b = balloons[j];
+          const distToBalloon = Math.hypot(a.x - b.x, a.y - b.y);
+          if (distToBalloon < b.radius + 6) {
+            sound.playPop();
+            if (b.isGolden) {
+              arrowsLeft += 2;
+              score += 75;
+              document.getElementById('arrowsCount').innerText = arrowsLeft;
+              createHitEffect(b.x, b.y, '+2 TEER! +75 PTS', '#facc15');
+            } else {
+              score += 35;
+              createHitEffect(b.x, b.y, '+35 BONUS!', b.color);
+            }
+            document.getElementById('scoreDisplay').innerText = score;
+            balloons.splice(j, 1);
+            break;
+          }
+        }
+
+        // B. Collision Check with Moving Target Board
+        const tipX = a.x + Math.cos(a.angle) * (a.length * 0.4);
+        const tipY = a.y + Math.sin(a.angle) * (a.length * 0.4);
+
+        if (tipX >= target.x - target.width / 2 && tipX <= target.x + target.width / 2) {
+          const targetTop = target.y - target.height / 2;
+          const targetBottom = target.y + target.height / 2;
+
+          if (tipY >= targetTop && tipY <= targetBottom) {
+            // Arrow hits target board
+            hitsCount++;
+            const relativeHitY = Math.abs(tipY - target.y);
+            const normalizedY = relativeHitY / (target.height / 2); // 0 (center) to 1 (outer)
+
+            let hitRing = target.rings[3];
+            for (let r = 0; r < target.rings.length; r++) {
+              if (normalizedY <= target.rings[r].hRatio) {
+                hitRing = target.rings[r];
+                break;
+              }
+            }
+
+            if (hitRing.pts === 50) bullseyesCount++;
+
+            score += hitRing.pts;
+            document.getElementById('scoreDisplay').innerText = score;
+            sound.playHit(hitRing.pts);
+            createHitEffect(tipX, tipY, `${hitRing.label.toUpperCase()} +${hitRing.pts}!`, hitRing.color);
+
+            // Stick arrow into moving board
+            stuckArrows.push({
+              offsetY: tipY - target.y,
+              offsetX: tipX - target.x,
+              angle: a.angle,
+              length: a.length
+            });
+
+            // Randomize wind for next shot after hit
+            randomizeWind();
+
+            activeArrows.splice(i, 1);
+            continue;
+          }
+        }
+
+        // C. Check Ground collision
+        if (a.y >= V_HEIGHT - 65) {
+          a.y = V_HEIGHT - 65;
+          a.vx = 0;
+          a.vy = 0;
+          activeArrows.splice(i, 1);
+          createHitEffect(a.x, a.y, 'MISS', '#94a3b8');
+          randomizeWind();
+          continue;
+        }
+
+        // D. Out of bounds check
+        if (a.x > V_WIDTH + 100 || a.x < -100) {
+          activeArrows.splice(i, 1);
+          randomizeWind();
+          continue;
+        }
+      }
+
+      // 5. Update Particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.gravity;
+        p.alpha -= 0.022;
+        if (p.alpha <= 0) particles.splice(i, 1);
+      }
+
+      checkGameOver();
+    }
+
+    /* =====================================================================
+       RENDERING ENGINE (CANVAS 2D)
+       ===================================================================== */
+    function draw() {
+      ctx.clearRect(0, 0, V_WIDTH, V_HEIGHT);
+
+      // --- 1. Background Sky & Gradient Atmosphere ---
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, V_HEIGHT);
+      skyGrad.addColorStop(0, '#38bdf8');   // Daylight sky
+      skyGrad.addColorStop(0.55, '#bae6fd');
+      skyGrad.addColorStop(0.85, '#e0f2fe');
+      skyGrad.addColorStop(1, '#fef08a');   // Warm horizon
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+      // --- 2. Sun ---
+      ctx.save();
+      const sunGrad = ctx.createRadialGradient(280, 140, 15, 280, 140, 90);
+      sunGrad.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+      sunGrad.addColorStop(0.4, 'rgba(253, 224, 71, 0.45)');
+      sunGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+      ctx.fillStyle = sunGrad;
+      ctx.beginPath();
+      ctx.arc(280, 140, 90, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // --- 3. Drifting Fluffy Clouds ---
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      clouds.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+        ctx.arc(c.x + c.radius * 0.65, c.y - c.radius * 0.25, c.radius * 0.75, 0, Math.PI * 2);
+        ctx.arc(c.x - c.radius * 0.65, c.y + c.radius * 0.05, c.radius * 0.6, 0, Math.PI * 2);
+        ctx.arc(c.x + c.radius * 1.2, c.y + c.radius * 0.1, c.radius * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // --- 4. Distant Mountains / Rolling Hills ---
+      ctx.fillStyle = '#86efac'; // Pale distant hills
+      ctx.beginPath();
+      ctx.moveTo(0, V_HEIGHT - 60);
+      ctx.bezierCurveTo(300, V_HEIGHT - 220, 500, V_HEIGHT - 120, 800, V_HEIGHT - 210);
+      ctx.bezierCurveTo(1050, V_HEIGHT - 260, 1180, V_HEIGHT - 160, V_WIDTH, V_HEIGHT - 170);
+      ctx.lineTo(V_WIDTH, V_HEIGHT);
+      ctx.lineTo(0, V_HEIGHT);
+      ctx.fill();
+
+      // Lush Foreground Meadow
+      const hillGrad = ctx.createLinearGradient(0, V_HEIGHT - 160, 0, V_HEIGHT);
+      hillGrad.addColorStop(0, '#22c55e');
+      hillGrad.addColorStop(1, '#15803d');
+      ctx.fillStyle = hillGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, V_HEIGHT - 120);
+      ctx.bezierCurveTo(340, V_HEIGHT - 170, 720, V_HEIGHT - 70, V_WIDTH, V_HEIGHT - 110);
+      ctx.lineTo(V_WIDTH, V_HEIGHT);
+      ctx.lineTo(0, V_HEIGHT);
+      ctx.fill();
+
+      // Ground Dirt Base
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(0, V_HEIGHT - 45, V_WIDTH, 45);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(0, V_HEIGHT - 38, V_WIDTH, 6);
+
+      // --- 5. Swaying Grass Blades ---
+      ctx.strokeStyle = '#16a34a';
+      ctx.lineWidth = 2.5;
+      const now = Date.now() * 0.003;
+      grassBlades.forEach(g => {
+        ctx.beginPath();
+        ctx.moveTo(g.x, g.y);
+        ctx.quadraticCurveTo(
+          g.x + Math.sin(now + g.swayOffset) * 8 + wind * 4,
+          g.y - g.height * 0.5,
+          g.x + Math.sin(now + g.swayOffset) * 12 + wind * 6,
+          g.y - g.height
+        );
+        ctx.stroke();
+      });
+
+      // --- 6. Balloons ---
+      balloons.forEach(b => {
+        ctx.save();
+        // Balloon Body
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.ellipse(b.x, b.y, b.radius * 0.85, b.radius, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Balloon Highlight Shine
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.beginPath();
+        ctx.ellipse(b.x - b.radius * 0.3, b.y - b.radius * 0.35, b.radius * 0.22, b.radius * 0.4, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Knot & String
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.moveTo(b.x - 3, b.y + b.radius);
+        ctx.lineTo(b.x + 3, b.y + b.radius);
+        ctx.lineTo(b.x, b.y + b.radius + 5);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y + b.radius + 5);
+        ctx.quadraticCurveTo(b.x + Math.sin(b.time * 2) * 5, b.y + b.radius + 18, b.x, b.y + b.radius + 32);
+        ctx.stroke();
+
+        // Badge on Golden Balloon
+        if (b.isGolden) {
+          ctx.fillStyle = '#78350f';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('+🏹', b.x, b.y);
+        }
+        ctx.restore();
+      });
+
+      // --- 7. Target Board & Moving Stand ---
+      drawTarget();
+
+      // --- 8. Trajectory Prediction Arc (When Dragging Bow) ---
+      if (bow.isDragging && bow.power > 0.08) {
+        drawTrajectory();
+      }
+
+      // --- 9. Draw Archery Bow ---
+      drawBow();
+
+      // --- 10. Draw Flying Arrows ---
+      activeArrows.forEach(a => drawSingleArrow(a.x, a.y, a.angle, a.length, a.tailPositions));
+
+      // --- 11. Draw Explosion / Spark Particles ---
+      particles.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    /* =====================================================================
+       DETAILED PROCEDURAL DRAWING FUNCTIONS
+       ===================================================================== */
+    function drawTarget() {
+      ctx.save();
+
+      // Supporting Vertical Target Rail
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(target.x - 4, 80, 8, V_HEIGHT - 120);
+
+      // Wooden Target Stand Body
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(target.x - 12, target.y - target.height / 2 - 14, 24, target.height + 28);
+      ctx.strokeStyle = '#451a03';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(target.x - 12, target.y - target.height / 2 - 14, 24, target.height + 28);
+
+      // Target Rings (Side Perspective Face)
+      const halfH = target.height / 2;
+      for (let i = target.rings.length - 1; i >= 0; i--) {
+        const ring = target.rings[i];
+        const ringH = halfH * ring.hRatio;
+
+        ctx.fillStyle = ring.color;
+        ctx.beginPath();
+        ctx.roundRect(target.x - target.width / 2, target.y - ringH, target.width, ringH * 2, 6);
+        ctx.fill();
+
+        ctx.strokeStyle = ring.stroke;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // Center Bullseye Marker dot
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Render Arrows stuck into this moving target board
+      stuckArrows.forEach(sa => {
+        const arrowX = target.x + sa.offsetX;
+        const arrowY = target.y + sa.offsetY;
+        drawSingleArrow(arrowX, arrowY, sa.angle, sa.length);
+      });
+
+      ctx.restore();
+    }
+
+    function drawBow() {
+      ctx.save();
+      ctx.translate(bow.x, bow.y);
+
+      // Calculate angle from pull to center
+      const drawAngle = bow.isDragging ? -bow.angle : 0;
+      ctx.rotate(drawAngle);
+
+      const bowHeight = 110;
+      const limbBend = 28 + bow.power * 18; // Limbs bend as string is pulled
+
+      // Bowstring Coordinates
+      const topTipX = 0;
+      const topTipY = -bowHeight;
+      const btmTipX = 0;
+      const btmTipY = bowHeight;
+
+      // Pulled String Center Nock
+      const nockX = -bow.pullDist * 0.9;
+      const nockY = 0;
+
+      // 1. Draw Bowstring
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(topTipX, topTipY);
+      ctx.lineTo(nockX, nockY);
+      ctx.lineTo(btmTipX, btmTipY);
+      ctx.stroke();
+
+      // 2. Draw Arrow on Bow (if ready to fire)
+      if (arrowsLeft > 0 || bow.isDragging) {
+        drawSingleArrow(nockX + 28, 0, 0, 72);
+      }
+
+      // 3. Wooden Curved Bow Limbs
+      ctx.strokeStyle = '#b45309';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(topTipX, topTipY);
+      ctx.quadraticCurveTo(limbBend, -bowHeight * 0.45, 12, 0);
+      ctx.quadraticCurveTo(limbBend, bowHeight * 0.45, btmTipX, btmTipY);
+      ctx.stroke();
+
+      // Bow Limb Inner Highlights & Leather Grip
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(topTipX + 1, topTipY + 4);
+      ctx.quadraticCurveTo(limbBend - 3, -bowHeight * 0.45, 10, 0);
+      ctx.quadraticCurveTo(limbBend - 3, bowHeight * 0.45, btmTipX + 1, btmTipY - 4);
+      ctx.stroke();
+
+      // Leather Hand Grip
+      ctx.fillStyle = '#3f1f0a';
+      ctx.fillRect(8, -16, 8, 32);
+
+      ctx.restore();
+    }
+
+    function drawSingleArrow(x, y, angle, length, trails = null) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      // Optional motion blur trail
+      if (trails && trails.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < trails.length; i++) {
+          const pt = trails[i];
+          const localX = (pt.x - x);
+          const localY = (pt.y - y);
+          if (i === 0) ctx.moveTo(localX, localY);
+          else ctx.lineTo(localX, localY);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Arrow Shaft (Dark Cedar Wood)
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-length / 2, 0);
+      ctx.lineTo(length / 2, 0);
+      ctx.stroke();
+
+      // Arrowhead (Sharp Silver Steel Tip)
+      ctx.fillStyle = '#e2e8f0';
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(length / 2 + 10, 0);
+      ctx.lineTo(length / 2 - 4, -5);
+      ctx.lineTo(length / 2 - 2, 0);
+      ctx.lineTo(length / 2 - 4, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Fletching (Teer Feathers - Crimson Red & White)
+      ctx.fillStyle = '#dc2626';
+      // Upper feather
+      ctx.beginPath();
+      ctx.moveTo(-length / 2 + 3, 0);
+      ctx.lineTo(-length / 2 - 8, -6);
+      ctx.lineTo(-length / 2 + 5, -6);
+      ctx.lineTo(-length / 2 + 15, 0);
+      ctx.fill();
+
+      // Lower feather
+      ctx.beginPath();
+      ctx.moveTo(-length / 2 + 3, 0);
+      ctx.lineTo(-length / 2 - 8, 6);
+      ctx.lineTo(-length / 2 + 5, 6);
+      ctx.lineTo(-length / 2 + 15, 0);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawTrajectory() {
+      const launchSpeed = 16 + bow.power * 26;
+      let simX = bow.x;
+      let simY = bow.y;
+      let simVx = Math.cos(bow.angle) * launchSpeed;
+      let simVy = -Math.sin(bow.angle) * launchSpeed;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+
+      for (let step = 0; step < 26; step++) {
+        simVy += 0.38;          // Gravity step
+        simVx += wind * 0.055;  // Wind step
+        simX += simVx;
+        simY += simVy;
+
+        // Skip drawing point if already on ground
+        if (simY > V_HEIGHT - 60 || simX > V_WIDTH) break;
+
+        ctx.beginPath();
+        const dotRadius = Math.max(1, 3.5 - step * 0.1);
+        ctx.arc(simX, simY, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    /* =====================================================================
+       MAIN GAME LOOP
+       ===================================================================== */
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Initialize resolution & start loop
+    resizeCanvas();
+    requestAnimationFrame(gameLoop);
+
+  </script>
+</body>
+</html>
